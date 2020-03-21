@@ -1,5 +1,5 @@
 using DifferentialEquations
-using Plots
+using Interact, Plots
 using DataFrames, CSV
 
 function event(x, xi; scale = 1)
@@ -192,10 +192,25 @@ function flatten_curve(q_arr, equations, u₀, p, tspan, population)
         prob = ODEProblem(equations, u₀, tspan, p)
         sol = solve(prob, saveat = 2.5)
         # plot!(fig1, sol, vars = 2)
-        plot!(fig1, sol.t, sol[2, :] * population * p[4], xaxis = "Time, days", yaxis = "Cases", label="Q = $(p[end-1])", lw = 2)
+        plot!(
+            fig1,
+            sol[2, :] .*= p[4],
+            xaxis = "Time, days",
+            yaxis = "Cases",
+            label = "Q = $(p[end-1])",
+            lw = 2,
+        )
         mortality[i] = sol[4, end] / sol[3, end]
     end
-    plot!(fig2, q_arr, mortality, xaxis = "Q", yaxis = "Mortality Rate, deaths/cases", label=nothing, lw = 2)
+    plot!(
+        fig2,
+        q_arr,
+        mortality,
+        xaxis = "Q",
+        yaxis = "Mortality Rate, deaths/cases",
+        label = nothing,
+        lw = 2,
+    )
     return fig1, fig2
 end
 
@@ -208,10 +223,25 @@ function flatten_curvev(α_arr, equations, u₀, p, tspan, population)
         prob = ODEProblem(equations, u₀, tspan, p)
         sol = solve(prob, saveat = 2.5)
         # plot!(fig1, sol, vars = 3)
-        plot!(fig1, sol.t, sol[3, :] * population, xaxis = "Time, days", yaxis = "Cases", label="\\alpha = $(p[2])", lw = 2)
+        plot!(
+            fig1,
+            sol[3, :],
+            xaxis = "Time, days",
+            yaxis = "Cases",
+            label = "\\alpha = $(p[2])",
+            lw = 2,
+        )
         mortality[i] = sol[6, end] / sol[5, end]
     end
-    plot!(fig2, α_arr, mortality, xaxis = "\\alpha", yaxis = "Mortality Rate, deaths/cases", label=nothing, lw = 2)
+    plot!(
+        fig2,
+        α_arr,
+        mortality,
+        xaxis = "\\alpha",
+        yaxis = "Mortality Rate, deaths/cases",
+        label = nothing,
+        lw = 2,
+    )
     return fig1, fig2
 end
 
@@ -220,56 +250,160 @@ df = dropmissing(raw)
 
 # Basic SIRD
 u₀, p, tspan, population = setup(df)
-prob = ODEProblem(sird!, u₀, tspan, p)
-sol = solve(prob, saveat = 2.5)
-# sird = plot(sol)
-sird = plot(sol.t, [sol[i, :] * population for i = 1:size(sol, 1)], xaxis = "Time, days", yaxis = "Cases", label=["Susceptible" "Infected" "Recovered" "Deaths"], lw = 2)
-display(sird)
+@manipulate for tmax = 100:10:300, latent_period = 0:2:20, mortality = 0.01:0.01:0.15, r0 = 2:0.1:3
+    γ = 1 / latent_period
+    μ = γ * mortality
+    λ = r0 * (γ + μ)
+    p = [λ; γ; μ]
+    tspan = [0.; tmax]
+    prob = ODEProblem(sird!, u₀, tspan, p)
+    sol = solve(prob)
+    sird = plot(
+        sol,
+        xaxis = "Time, days",
+        yaxis = "Cases",
+        label = ["Susceptible" "Infected" "Recovered" "Deaths"],
+        lw = 2,
+    )
+end
 
 # Single event SIRD
 u₀, p, tspan, population = setup(df)
-prob = ODEProblem(sirdq!, u₀, tspan, p)
-sol = solve(prob, saveat = 2.5)
-# event_sird = plot(sol)
-event_sird = plot(sol.t, [sol[i, :] * population for i = 1:size(sol, 1)], xaxis = "Time, days", yaxis = "Cases", label=["Susceptible" "Infected" "Recovered" "Deaths"], lw = 2)
-plot!(event_sird, p[7:end-2], linetype=:vline, lw = 2, ls=:dash, lc="black", label="Quarantine Event")
-display(event_sird)
+@manipulate for tq = 0:5:150, q0 = 0:0.05:1
+    p[3] = p[2] * 0.05
+    p[end-2:end-1] = [tq; q0]
+    tspan = [0.; 300]
+    prob = ODEProblem(sirdq!, u₀, tspan, p)
+    sol = solve(prob)
+    # event_sird = plot(sol)
+    event_sird = plot(
+        sol,
+        xaxis = "Time, days",
+        yaxis = "Cases",
+        label = ["Susceptible" "Infected" "Recovered" "Deaths"],
+        lw = 2,
+    )
+    plot!(
+        event_sird,
+        p[7:end-2],
+        linetype = :vline,
+        lw = 2,
+        ls = :dash,
+        lc = "black",
+        label = "Quarantine Event",
+    )
+end
 
 # Two event SIRD
 u₀, p, tspan, population = setup(raw)
-prob = ODEProblem(sirdq!, u₀, tspan, p)
-sol = solve(prob, saveat = 2.5)
-# two_event_sird = plot(sol)
-two_event_sird = plot(sol.t, [sol[i, :] * population for i = 1:size(sol, 1)], xaxis = "Time, days", yaxis = "Cases", label=["Susceptible" "Infected" "Recovered" "Deaths"], lw = 2)
-plot!(two_event_sird, p[7:end-2], linetype=:vline, lw = 2, ls=:dash, lc="black", label="Quarantine Event")
-display(two_event_sird)
+@manipulate for tq1 = 0:5:300, tq2 = 0:5:300, q0 = 0:0.05:1
+    p[3] = p[2] * 0.05
+    p[end-3:end-1] = [tq1; tq2; q0]
+    prob = ODEProblem(sirdq!, u₀, tspan, p)
+    sol = solve(prob)
+    # two_event_sird = plot(sol)
+    two_event_sird = plot(
+        sol,
+        xaxis = "Time, days",
+        yaxis = "Cases",
+        label = ["Susceptible" "Infected" "Recovered" "Deaths"],
+        lw = 2,
+    )
+    plot!(
+        two_event_sird,
+        p[7:end-2],
+        linetype = :vline,
+        lw = 2,
+        ls = :dash,
+        lc = "black",
+        label = "Quarantine Event",
+    )
+end
 
 # Beds single event
 u₀, p, tspan, population = setup(df)
-prob = ODEProblem(sirdqb!, u₀, tspan, p)
-sol = solve(prob, saveat = 2.5)
-# bed_sird = plot(sol)
-bed_sird = plot(sol.t, [sol[i, :] * population for i = 1:size(sol, 1)], xaxis = "Time, days", yaxis = "Cases", label=["Susceptible" "Infected" "Recovered" "Deaths"], lw = 2)
-plot!(bed_sird, p[7:end-2], linetype=:vline, lw = 2, ls=:dash, lc="black", label="Quarantine Event")
-plot!(bed_sird, p[5:5].*population, linetype=:hline, lw = 2, ls=:dash, lc="red", label="Critical Care Beds")
-display(bed_sird)
+@manipulate for tq = 0:5:300, q0 = 0:0.05:1, serious = 0.1:0.05:0.5, beds=0.001:0.001:0.05, β = 10:10:100
+    p[4:end-1] = [serious; beds; β; tq; q0]
+
+    # p = [λ; γ; μ; serious; beds; β; tq; q0; event]
+    prob = ODEProblem(sirdqb!, u₀, tspan, p)
+    sol = solve(prob)
+    # bed_sird = plot(sol)
+    bed_sird = plot(
+        sol,
+        xaxis = "Time, days",
+        yaxis = "Cases",
+        label = ["Susceptible" "Infected" "Recovered" "Deaths"],
+        lw = 2,
+    )
+    plot!(
+        bed_sird,
+        p[7:end-2],
+        linetype = :vline,
+        lw = 2,
+        ls = :dash,
+        lc = "black",
+        label = "Quarantine Event",
+    )
+    plot!(
+        bed_sird,
+        p[5:5],
+        linetype = :hline,
+        lw = 2,
+        ls = :dash,
+        lc = "red",
+        label = "Critical Care Beds",
+    )
+end
 
 # Beds two events
 u₀, p, tspan, population = setup(raw)
-prob = ODEProblem(sirdqb!, u₀, tspan, p)
-sol = solve(prob, saveat = 2.5)
-# bed_sird = plot(sol)
-bed_sird = plot(sol.t, [sol[i, :] * population for i = 1:size(sol, 1)], xaxis = "Time, days", yaxis = "Cases", label=["Susceptible" "Infected" "Recovered" "Deaths"], lw = 2)
-plot!(bed_sird, p[7:end-2], linetype=:vline, lw = 2, ls=:dash, lc="black", label="Quarantine Event")
-plot!(bed_sird, p[5:5].*population, linetype=:hline, lw = 2, ls=:dash, lc="red", label="Critical Care Beds")
-display(bed_sird)
+@manipulate for tq1 = 0:5:300, tq2 = 0:5:300, q0 = 0:0.05:1, serious = 0.1:0.05:0.5, beds=0.001:0.001:0.05, β = 10:10:100
+    p[4:end-1] = [serious; beds; β; tq1; tq2; q0]
+    prob = ODEProblem(sirdqb!, u₀, tspan, p)
+    sol = solve(prob)
+    # bed_sird = plot(sol)
+    bed_sird = plot(
+        sol,
+        xaxis = "Time, days",
+        yaxis = "Cases",
+        label = ["Susceptible" "Infected" "Recovered" "Deaths"],
+        lw = 2,
+    )
+    plot!(
+        bed_sird,
+        p[7:end-2],
+        linetype = :vline,
+        lw = 2,
+        ls = :dash,
+        lc = "black",
+        label = "Quarantine Event",
+    )
+    plot!(
+        bed_sird,
+        p[5:5],
+        linetype = :hline,
+        lw = 2,
+        ls = :dash,
+        lc = "red",
+        label = "Critical Care Beds",
+    )
+end
 
 # Flatten curve
 u₀, p, tspan, population = setup(df)
 p[7:end-2] .= 0.0
 q_arr = Array(range(0, step = 0.1, stop = 0.6))
 flat_curve, mort_plot = flatten_curve(q_arr, sirdqb!, u₀, p, tspan, population)
-plot!(flat_curve, p[5:5]*population, linetype=:hline, lw = 2, ls=:dash, lc="red", label="Critical Care Beds")
+plot!(
+    flat_curve,
+    p[5:5] * population,
+    linetype = :hline,
+    lw = 2,
+    ls = :dash,
+    lc = "red",
+    label = "Critical Care Beds",
+)
 display(flat_curve)
 display(mort_plot)
 
@@ -278,13 +412,27 @@ u₀, p, tspan, population = setupv(raw)
 prob = ODEProblem(sirdv!, u₀, tspan, p)
 sol = solve(prob, saveat = 2.5)
 sirdv = plot(sol)
-sirdv = plot(sol.t, [sol[i, :] * population for i = 1:size(sol, 1)], xaxis = "Time, days", yaxis = "Cases", label=["Susceptible Vulnerable" "Susceptible Not Vulnerable" "Infected Vulnerable" "Infected Not Vulnerable" "Recovered" "Deaths"], lw = 2)
+sirdv = plot(
+    sol .*= population,
+    xaxis = "Time, days",
+    yaxis = "Cases",
+    label = ["Susceptible Vulnerable" "Susceptible Not Vulnerable" "Infected Vulnerable" "Infected Not Vulnerable" "Recovered" "Deaths"],
+    lw = 2,
+)
 display(sirdv)
 
 # Flatten sird vulnerable
 u₀, p, tspan, population = setupv(raw)
 α_arr = Array(range(0, step = 0.2, stop = 0.9))
 flat_curve, mort_plot = flatten_curvev(α_arr, sirdv!, u₀, p, tspan, population)
-plot!(flat_curve, p[5:5].*population, linetype=:hline, lw = 2, ls=:dash, lc="red", label="Critical Care Beds")
+plot!(
+    flat_curve,
+    p[5:5] .* population,
+    linetype = :hline,
+    lw = 2,
+    ls = :dash,
+    lc = "red",
+    label = "Critical Care Beds",
+)
 display(flat_curve)
 display(mort_plot)
