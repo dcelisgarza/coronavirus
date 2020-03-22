@@ -128,7 +128,7 @@ function setupv(df::DataFrame)
     # time
     tspan = (t0; tf)
 
-    return u₀, p, tspan, population
+    return u₀, p, tspan, population, S₀, I₀
 end
 
 function sirdv!(du, u, p, t)
@@ -190,13 +190,13 @@ function flatten_curve(q_arr, equations, u₀, p, tspan, population)
     for i = 1:length(q_arr)
         p[end-1] = q_arr[i]
         prob = ODEProblem(equations, u₀, tspan, p)
-        sol = solve(prob, saveat = 2.5)
+        sol = solve(prob,saveat=2.5)
         # plot!(fig1, sol, vars = 2)
         plot!(
             fig1,
-            sol[2, :] .*= p[4],
+            sol[2,:] .*= p[4],
             xaxis = "Time, days",
-            yaxis = "Cases",
+            yaxis = "Cases that need beds",
             label = "Q = $(p[end-1])",
             lw = 2,
         )
@@ -221,13 +221,14 @@ function flatten_curvev(α_arr, equations, u₀, p, tspan, population)
     for i = 1:length(α_arr)
         p[2] = α_arr[i]
         prob = ODEProblem(equations, u₀, tspan, p)
-        sol = solve(prob, saveat = 2.5)
+        sol = solve(prob)
         # plot!(fig1, sol, vars = 3)
         plot!(
             fig1,
-            sol[3, :],
+            sol,
+            vars=3,
             xaxis = "Time, days",
-            yaxis = "Cases",
+            yaxis = "Vulnerable Cases",
             label = "\\alpha = $(p[2])",
             lw = 2,
         )
@@ -322,10 +323,8 @@ end
 
 # Beds single event
 u₀, p, tspan, population = setup(df)
-@manipulate for tq = 0:5:300, q0 = 0:0.05:1, serious = 0.1:0.05:0.5, beds=0.001:0.001:0.05, β = 10:10:100
+@manipulate for tq = 0:5:300, q0 = 0:0.05:1, serious = 0.1:0.01:0.5, beds=0.001:0.001:0.05, β = 10:10:100
     p[4:end-1] = [serious; beds; β; tq; q0]
-
-    # p = [λ; γ; μ; serious; beds; β; tq; q0; event]
     prob = ODEProblem(sirdqb!, u₀, tspan, p)
     sol = solve(prob)
     # bed_sird = plot(sol)
@@ -397,7 +396,7 @@ q_arr = Array(range(0, step = 0.1, stop = 0.6))
 flat_curve, mort_plot = flatten_curve(q_arr, sirdqb!, u₀, p, tspan, population)
 plot!(
     flat_curve,
-    p[5:5] * population,
+    p[5:5],
     linetype = :hline,
     lw = 2,
     ls = :dash,
@@ -408,18 +407,33 @@ display(flat_curve)
 display(mort_plot)
 
 # sird vulnerable
-u₀, p, tspan, population = setupv(raw)
-prob = ODEProblem(sirdv!, u₀, tspan, p)
-sol = solve(prob, saveat = 2.5)
-sirdv = plot(sol)
-sirdv = plot(
-    sol .*= population,
-    xaxis = "Time, days",
-    yaxis = "Cases",
-    label = ["Susceptible Vulnerable" "Susceptible Not Vulnerable" "Infected Vulnerable" "Infected Not Vulnerable" "Recovered" "Deaths"],
-    lw = 2,
-)
-display(sirdv)
+u₀, p, tspan, population, S₀, I₀ = setupv(raw)
+@manipulate for mortalityv = 0.05:0.01:0.20, mortalitynv = 0.001:0.001:0.01, fv = 0:0.01:1, α = 0:0.1:1
+    μv = p[3] * mortalityv
+    μnv = p[3] * mortalitynv
+    μ = μv * fv + μnv * (1 - fv)
+    λ = 2.6 * (p[3] + μ)
+    p[1] = λ
+    p[2] = α
+    p[4:5] = [μv; μnv]
+
+    Sv₀ = fv * S₀
+    Snv₀ = (1 - fv) * S₀
+    Iv₀ = fv * I₀
+    Inv₀ = (1 - fv) * I₀
+    u₀[1:4] = [Sv₀; Snv₀; Iv₀; Inv₀]
+
+    prob = ODEProblem(sirdv!, u₀, tspan, p)
+    sol = solve(prob)
+    sirdv = plot(sol)
+    sirdv = plot(
+        sol,
+        xaxis = "Time, days",
+        yaxis = "Cases",
+        label = ["Susceptible Vulnerable" "Susceptible Not Vulnerable" "Infected Vulnerable" "Infected Not Vulnerable" "Recovered" "Deaths"],
+        lw = 2,
+    )
+end
 
 # Flatten sird vulnerable
 u₀, p, tspan, population = setupv(raw)
@@ -427,7 +441,7 @@ u₀, p, tspan, population = setupv(raw)
 flat_curve, mort_plot = flatten_curvev(α_arr, sirdv!, u₀, p, tspan, population)
 plot!(
     flat_curve,
-    p[5:5] .* population,
+    p[5:5],
     linetype = :hline,
     lw = 2,
     ls = :dash,
